@@ -1,8 +1,54 @@
-var express = require('express');
-var { graphqlHTTP } = require('express-graphql');
-var { buildSchema } = require('graphql');
+const express = require('express');
+const { graphqlHTTP } = require('express-graphql');
+const { buildSchema } = require('graphql');
+const mongoose = require('mongoose');
 
-var schema = buildSchema(`
+const mongoURI = 'mongodb+srv://algor:algor123@cluster0.rlt4hjr.mongodb.net/';
+mongoose.connect(mongoURI);
+
+const User = mongoose.model('User', {
+    username: {
+        type: String,
+        unique: true,
+        required: true,
+    },
+    email: {
+        type: String,
+        unique: true,
+        required: true,
+    },
+    password: {
+        type: String,
+        required: true,
+    },
+});
+
+const Employee = mongoose.model('Employee', {
+    first_name: {
+        type: String,
+        required: true,
+    },
+    last_name: {
+        type: String,
+        required: true,
+    },
+    email: {
+        type: String,
+        unique: true,
+        required: true,
+    },
+    gender: {
+        type: String,
+        enum: ['male', 'female', 'other'],
+        required: true,
+    },
+    salary: {
+        type: Number,
+        required: true,
+    }
+});
+
+const schema = buildSchema(`
     type User {
         _id: ID!
         username: String!
@@ -30,74 +76,54 @@ var schema = buildSchema(`
         login(usernameOrEmail: String!, password: String!): User
         getAllEmployees: [Employee]
         searchEmployeeById(_id: ID!): Employee
-    }`);
+    }
+`);
 
-const { MongoClient, ObjectId } = require('mongodb');
+const root = {
+    signup: async ({ username, email, password }) => {
+        const user = new User({ username, email, password });
+        await user.save();
+        return user;
+    },
+    addEmployee: async ({ first_name, last_name, email, gender, salary }) => {
+        const employee = new Employee({ first_name, last_name, email, gender, salary });
+        await employee.save();
+        return employee;
+    },
+    updateEmployee: async ({ _id, first_name, last_name, email, gender, salary }) => {
+        const employee = await Employee.findByIdAndUpdate(
+            _id,
+            { first_name, last_name, email, gender, salary },
+            { new: true }
+        );
+        return employee;
+    },
+    deleteEmployee: async ({ _id }) => {
+        const result = await Employee.deleteOne({ _id });
+        return result.deletedCount === 1;
+    },
+    login: async ({ usernameOrEmail, password }) => {
+        const user = await User.findOne({
+            $or: [{ username: usernameOrEmail }, { email: usernameOrEmail }],
+            password,
+        });
+        return user;
+    },
+    getAllEmployees: async () => {
+        const employees = await Employee.find();
+        return employees;
+    },
+    searchEmployeeById: async ({ _id }) => {
+        const employee = await Employee.findById(_id);
+        return employee;
+    },
+};
 
-const mongoURI = 'mongodb+srv://algor:algor123@cluster0.rlt4hjr.mongodb.net/';
-const client = new MongoClient(mongoURI);
-
-client.connect();
-
-var signup = async ({ username, email, password }) => {
-      const userCollection = client.db('comp3133_assignment1').collection('Users');
-      const result = await userCollection.insertOne({ username, email, password });
-      console.log(result.insertedId)
-      return result.insertedId;
-    }
-var addEmployee = async ({ first_name, last_name, email, gender, salary }) => {
-      const employeeCollection = client.db('comp3133_assignment1').collection('Employee');
-      const result = await employeeCollection.insertOne({ first_name, last_name, email, gender, salary });
-      return result.insertedId;
-    }
-var updateEmployee = async ({ _id, first_name, last_name, email, gender, salary }) => {
-      const employeeCollection = client.db('comp3133_assignment1').collection('Employee');
-      const result = await employeeCollection.findOneAndUpdate(
-        { _id:  new ObjectId(String(_id)) }, 
-        { $set: { first_name, last_name, email, gender, salary } },
-        { returnDocument: 'after' }
-      );
-      return result;
-    }
-var deleteEmployee = async ({ _id }) => {
-      const employeeCollection = client.db('comp3133_assignment1').collection('Employee');
-      const result = await employeeCollection.deleteOne({ _id: new ObjectId(String(_id)) });
-      return result.deletedCount === 1;
-    }
-var login = async ({ usernameOrEmail, password }) => {
-      const userCollection = client.db('comp3133_assignment1').collection('Users');
-      const user = await userCollection.findOne({
-        $or: [{ username: usernameOrEmail }, { email: usernameOrEmail }],
-        password,
-      });
-      return user;
-    }
-var getAllEmployees = async () => {
-      const employeeCollection = client.db('comp3133_assignment1').collection('Employee');
-      const employees = await employeeCollection.find().toArray();
-      return employees;
-    }
-var searchEmployeeById = async ({ _id }) => {
-      const employeeCollection = client.db('comp3133_assignment1').collection('Employee');
-      const employee = await employeeCollection.findOne({ _id: new ObjectId(String(_id)) });
-      return employee;
-    }
-
-var root = {
-    signup: signup,
-    addEmployee: addEmployee,
-    updateEmployee: updateEmployee,
-    deleteEmployee: deleteEmployee,
-    login: login,
-    getAllEmployees: getAllEmployees,
-    searchEmployeeById: searchEmployeeById
-}
-
-var app = express();
+const app = express();
 app.use('/graphql', graphqlHTTP({
-    schema: schema,
+    schema,
     rootValue: root,
-    graphiql: false
+    graphiql: false,
 }));
 
 app.listen(4000, () => console.log('Express GraphQL Server Now Running On localhost:4000/graphql'));
