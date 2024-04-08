@@ -120,7 +120,8 @@ const root = {
 };
 
 const app = express();
-app.use('/graphql', graphqlHTTP({
+const cors = require('cors');
+app.use('/graphql', cors(), graphqlHTTP({
     schema,
     rootValue: root,
     graphiql: false,
